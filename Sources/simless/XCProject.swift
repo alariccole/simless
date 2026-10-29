@@ -91,6 +91,11 @@ struct XCProject {
                     let membership = try strings("target-membership", in: file)
                     for target in membership { synced[target, default: []].append(path) }
                     let exceptions = try objects("membership-exceptions", in: file)
+                    // An exception can add sources to a UI target that is NOT
+                    // in the folder's default membership. Do not skip it first.
+                    if !ui.isEmpty, exceptions.contains(where: { $0["build-phase"] != nil }) {
+                        throw SimlessError("unsupported build-phase membership exception in \(path)")
+                    }
                     let affected = Set(membership).union(exceptions.compactMap { $0["target"] as? String }).intersection(ui)
                     if affected.isEmpty { continue }
                     // Never claim UI coverage for membership forms we cannot resolve.
@@ -103,8 +108,10 @@ struct XCProject {
                             throw SimlessError("unsupported UI test membership exception in \(path)")
                         }
                     }
-                    let enumerator = FileManager.default.enumerator(atPath: path)
-                    let swift = (enumerator?.compactMap { $0 as? String } ?? []).filter { $0.hasSuffix(".swift") }
+                    guard let enumerator = FileManager.default.enumerator(atPath: path) else {
+                        throw SimlessError("cannot read UI test folder \(path)")
+                    }
+                    let swift = enumerator.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }
                     for target in affected {
                         var selected = Set(membership.contains(target) ? swift : [])
                         for item in exceptions where item["target"] as? String == target {
@@ -117,15 +124,15 @@ struct XCProject {
                         sources[target, default: []].formUnion(selected.map { path + "/" + $0 })
                     }
                 } else if kind == "file" {
-                    for member in file["target-membership"] as? [Any] ?? [] {
-                        guard let ref = member as? String else {
-                            throw SimlessError("unsupported Swift file membership at \(path); use simple target/compile-sources references")
-                        }
+                    for ref in try strings("target-membership", in: file) {
                         let parts = ref.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
                         guard parts.count == 2, !ref.hasPrefix("id:") else {
                             throw SimlessError("unsupported Swift file membership \(ref)")
                         }
                         if parts[1] == "compile-sources", ui.contains(parts[0]) {
+                            guard FileManager.default.isReadableFile(atPath: path) else {
+                                throw SimlessError("cannot read UI test source \(path)")
+                            }
                             sources[parts[0], default: []].insert(path)
                         }
                     }
