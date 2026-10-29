@@ -74,7 +74,8 @@ final class ApplePreviewComparisonTests: XCTestCase {
             records.append(record)
             let report: [String: Any] = ["sourceBlob": blob, "inkRevision": revision, "records": records,
                 "measurement": "Mac-side tool request to usable screenshot, not app or Foundation Models performance",
-                "requestedDestination": "My Mac (Designed for iPad)", "configuredDerivedData": scratch + "/AppleDerivedData",
+                "activeRunDestination": "My Mac (Designed for iPad)", "requestedRenderDestination": "iPhone 18 Pro",
+                "configuredDerivedData": scratch + "/AppleDerivedData",
                 "cacheCaveat": "Xcode service owns additional preview and package caches; no cold-cache or app-performance claim."]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: results + "/apple-preview.json"))
             let errors = response["errors"] as? [[String: Any]] ?? []
