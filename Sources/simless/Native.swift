@@ -303,7 +303,8 @@ enum Native {
         let exe = executable(try app(slot))
         var env: [String: String] = [:]
         let mine = ProcessInfo.processInfo.environment
-        for key in ["USER", "LOGNAME", "SHELL", "LANG", "SIMLESS_PERMISSIONS", "SIMLESS_DYNAMIC_TYPE"] { env[key] = mine[key] }
+        // Managed runners use this inherited identity to reap detached hosts too.
+        for key in ["USER", "LOGNAME", "SHELL", "LANG", "SIMLESS_PERMISSIONS", "SIMLESS_DYNAMIC_TYPE", "INKLINGS_JOB_ID"] { env[key] = mine[key] }
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         for (k, v) in environment(slot) { env[k] = v }
         for (k, v) in extra { env[k] = v }

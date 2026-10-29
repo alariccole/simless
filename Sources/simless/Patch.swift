@@ -120,7 +120,8 @@ enum Patch {
 
         // Each source gets every involved module in scope (@testable, for internal
         // declarations); its own types shadow theirs.
-        let imports = modulesInvolved.map { "@testable import \($0)\n" }.joined()
+        let kitImport = ws.config.kitPackage == true ? "import SimlessKit\n" : ""
+        let imports = kitImport + modulesInvolved.map { "@testable import \($0)\n" }.joined()
         var sources: [String] = []
         var originals: [String: String] = [:]   // patch copy -> edited file, for error messages
         for file in [fixtures] + files.filter({ $0 != fixtures }) {
@@ -134,6 +135,7 @@ enum Patch {
         try """
             import Foundation
             @testable import \(settings.moduleName)
+            \(kitImport)
             \(prelude)
             // The address crosses into the main actor as an Int (Sendable), so this
             // compiles under Swift 6 whatever the module's default isolation.
@@ -174,7 +176,8 @@ enum Patch {
         let r = try Shell.run(args + sources)
         Log.debug("swiftc \(secs(tc))")
         guard r.code == 0 else {
-            throw SimlessError("patch compile failed:\n" + compilerErrors(r.out, originals: originals, lineOffset: modulesInvolved.count))
+            throw SimlessError("patch compile failed:\n" + compilerErrors(r.out, originals: originals,
+                lineOffset: modulesInvolved.count + (ws.config.kitPackage == true ? 1 : 0)))
         }
         let ts = now()
         // By the workspace's mode, not the slot's: previews compile while the

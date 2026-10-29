@@ -145,15 +145,7 @@ func cmdInit(_ args: Args) throws {
         try enc.encode(config).write(to: URL(fileURLWithPath: configPath))
     }
 
-    try mkdirp("\(root)/\(kitDir)")
-    let kit = "\(root)/\(config.kitFile)"
-    try? fm.removeItem(atPath: kit)
-    try fm.copyItem(atPath: "\(Paths.toolRoot)/Templates/SimlessKit.swift", toPath: kit)
-    let fixtures = "\(root)/\(config.fixturesFile)"
-    let newFixtures = !fm.fileExists(atPath: fixtures)
-    if newFixtures {
-        try fm.copyItem(atPath: "\(Paths.toolRoot)/Templates/SimlessFixtures.swift", toPath: fixtures)
-    }
+    let newFixtures = try KitSetup.install(root: root, config: config)
 
     // The generated build-variant project and test plans stay out of git
     // without touching .gitignore.
@@ -170,12 +162,12 @@ func cmdInit(_ args: Args) throws {
     }
 
     let synced = isSynchronized(config.kitDir)
-    let hook = args.flags.contains("--no-hook") ? nil : try insertHook(in: "\(root)/\(sourceDir)")
+    let hook = args.flags.contains("--no-hook") ? nil : try insertHook(in: "\(root)/\(sourceDir)", packageKit: config.kitPackage == true)
     let configLine = existing != nil ? "kept \(Workspace.configName) (--force rewrites it)"
         : "wrote \(Workspace.configName): project \(project), scheme \(scheme), app \(appTarget), tests \(testTarget.isEmpty ? "none" : testTarget)\(packages.isEmpty ? "" : ", packages " + packages.joined(separator: ", "))"
     print("""
         \(configLine)
-        wrote \(config.kitFile)\(newFixtures ? " and \(config.fixturesFile)" : "")
+        \(config.kitPackage == true ? "using the SimlessKit package" : "wrote " + config.kitFile)\(newFixtures ? "; wrote \(config.fixturesFile)" : "")
 
         Next:
           1. \(synced ? "Both files are in a synchronized folder of \(appTarget), so Xcode picks them up."
@@ -183,7 +175,7 @@ func cmdInit(_ args: Args) throws {
           2. \(hook.map { "App hook: \($0)" } ?? """
         In your App's init(), add:
                  #if DEBUG && os(iOS)
-                 SimlessHost.startIfRequested()
+                 \(KitSetup.hookCall(package: config.kitPackage == true))
                  #endif
         """)
           3. Register screens in \((config.fixturesFile as NSString).lastPathComponent), then run `simless up`.
@@ -267,18 +259,14 @@ func initTemplate(_ dir: String, _ args: Args) throws {
 
     let configPath = "\(root)/\(Workspace.configName)"
     let keep = exists(configPath) && !args.flags.contains("--force")
-    let config = Config(project: "\(name).xcodeproj", scheme: appTarget, appTarget: appTarget, testTarget: testTarget,
+    let config = try keep ? Workspace.load(at: root).config : Config(project: "\(name).xcodeproj", scheme: appTarget, appTarget: appTarget, testTarget: testTarget,
                         kitDir: kitDir, sourceDirs: sourceDirs, packages: packages.isEmpty ? nil : packages)
     if !keep {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(config).write(to: URL(fileURLWithPath: configPath))
     }
-    try mkdirp("\(root)/\(kitDir)")
-    try? FileManager.default.removeItem(atPath: "\(root)/\(config.kitFile)")
-    try FileManager.default.copyItem(atPath: "\(Paths.toolRoot)/Templates/SimlessKit.swift", toPath: "\(root)/\(config.kitFile)")
-    let newFixtures = !exists("\(root)/\(config.fixturesFile)")
-    if newFixtures { try FileManager.default.copyItem(atPath: "\(Paths.toolRoot)/Templates/SimlessFixtures.swift", toPath: "\(root)/\(config.fixturesFile)") }
+    let newFixtures = try KitSetup.install(root: root, config: config)
 
     let compiled = sourceDirs.contains { kitDir == $0 || kitDir.hasPrefix($0 + "/") }
     let appFile: String? = {
@@ -290,10 +278,11 @@ func initTemplate(_ dir: String, _ args: Args) throws {
         }
         return nil
     }()
-    let hooked = appFile.flatMap { try? String(contentsOfFile: "\(root)/\($0)", encoding: .utf8) }?.contains("SimlessHost.startIfRequested()") == true
+    let hookCall = KitSetup.hookCall(package: config.kitPackage == true)
+    let hooked = appFile.flatMap { try? String(contentsOfFile: "\(root)/\($0)", encoding: .utf8) }?.contains(hookCall) == true
     print("""
         \(keep ? "kept" : "wrote") \(Workspace.configName): project \(name).xcodeproj, app \(appTarget), tests \(testTarget.isEmpty ? "none" : testTarget)
-        wrote \(config.kitFile)\(newFixtures ? " and \(config.fixturesFile)" : "")
+        \(config.kitPackage == true ? "using the SimlessKit package" : "wrote " + config.kitFile)\(newFixtures ? "; wrote \(config.fixturesFile)" : "")
         """)
     if compiled {
         print("project.yml: nothing to add, \(kitDir) is inside \(appTarget)'s sources (\(sourceDirs.joined(separator: ", ")))")
@@ -314,7 +303,7 @@ func initTemplate(_ dir: String, _ args: Args) throws {
             App hook: add this to the App's init()\(appFile.map { " in \($0)" } ?? ""), so the app answers simless:
 
                 #if DEBUG && os(iOS)
-                SimlessHost.startIfRequested()
+                \(hookCall)
                 #endif
             """)
     }
@@ -322,8 +311,8 @@ func initTemplate(_ dir: String, _ args: Args) throws {
 
 /// Adds `SimlessHost.startIfRequested()` to the `@main` App's init().
 /// Returns what it did, or nil when it couldn't find a safe place.
-func insertHook(in sourceDir: String) throws -> String? {
-    let call = "SimlessHost.startIfRequested()"
+func insertHook(in sourceDir: String, packageKit: Bool = false) throws -> String? {
+    let call = KitSetup.hookCall(package: packageKit)
     func block(_ indent: String) -> String {
         ["#if DEBUG && os(iOS)", call, "#endif"].map { indent + $0 + "\n" }.joined()
     }
@@ -335,16 +324,23 @@ func insertHook(in sourceDir: String) throws -> String? {
               let decl = s.range(of: #"@main\s+struct\s+\w+\s*:\s*([\w.]+\s*,\s*)*App\b[^{]*\{"#, options: .regularExpression)
         else { continue }
         if s.contains(call) { return "already present in \(rel)" }
+        if s.contains("SimlessHost.startIfRequested(") {
+            throw SimlessError("update the existing startup call in \(rel) to \(call)")
+        }
+        func write(_ text: String) throws {
+            let imports = packageKit && !text.contains("import SimlessKit") ? "#if DEBUG && os(iOS)\nimport SimlessKit\n#endif\n" : ""
+            try (imports + text).write(toFile: path, atomically: true, encoding: .utf8)
+        }
         // An existing init(): add the call as its first statement.
         if let initRange = s.range(of: #"\n([ \t]*)init\(\)\s*\{[ \t]*\n"#, options: .regularExpression, range: decl.upperBound..<s.endIndex) {
             let indent = String(s[initRange].dropFirst().prefix { $0 == " " || $0 == "\t" }) + "    "
             s.insert(contentsOf: block(indent), at: initRange.upperBound)
-            try s.write(toFile: path, atomically: true, encoding: .utf8)
+            try write(s)
             return "added to init() in \(rel)"
         }
         // No init(): add one right after the declaration.
         s.insert(contentsOf: "\n    init() {\n" + block("        ") + "    }\n", at: decl.upperBound)
-        try s.write(toFile: path, atomically: true, encoding: .utf8)
+        try write(s)
         return "added an init() to the App in \(rel)"
     }
     return nil

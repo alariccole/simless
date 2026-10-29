@@ -30,6 +30,7 @@ struct Config: Codable {
     var isolate: Bool?            // native hosts get a sandbox of their own: write only their slot, read only their worktree
     var previews: Bool?           // fixtures from #Preview blocks and the App's root view (default true)
     var network: Network?
+    var kitPackage: Bool?         // SimlessKit linked as a package; only fixtures live in kitDir
 
     struct Network: Codable {
         var block: Bool?              // render hosts get no network (default true)
