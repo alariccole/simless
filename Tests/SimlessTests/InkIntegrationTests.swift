@@ -46,6 +46,12 @@ final class InkIntegrationTests: XCTestCase {
             }
         }
 
+        for path in (ws.xcproject?.folders.values.flatMap { $0 } ?? []) + (ws.xcproject?.uiSources.values.flatMap { $0 } ?? []) {
+            guard URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(root + "/") else {
+                throw SimlessError("project source path escapes verified snapshot: \(path)")
+            }
+        }
+
         // Nested xcodebuild inherits the managed job but not its direct-tool
         // xcconfig setup. Preserve existing settings and confine its CAS here.
         let oldConfig = env["XCODE_XCCONFIG_FILE"]
@@ -117,7 +123,7 @@ final class InkIntegrationTests: XCTestCase {
 
     private func committedInputs(repository: String, revision: String) throws -> [(String, String, String)] {
         let tree = try Shell.check(["git", "-C", repository, "ls-tree", "-rz", revision, "--",
-                                    ".simless.json", "Proof", "Proof.xcodeproj", "Packages", "Config"])
+                                    ".simless.json", "Proof", "ProofUITests", "Proof.xcodeproj", "Packages", "Config"])
         let entries = try tree.split(separator: "\0").map { entry -> (String, String, String) in
             let pair = entry.split(separator: "\t", maxSplits: 1)
             guard pair.count == 2 else { throw SimlessError("invalid source tree entry") }
@@ -134,7 +140,7 @@ final class InkIntegrationTests: XCTestCase {
 
     private func verify(_ entries: [(String, String, String)], at root: String) throws {
         let expectedPaths = Set(entries.map { $0.0 })
-        for directory in ["Proof", "Proof.xcodeproj", "Packages", "Config"] {
+        for directory in ["Proof", "ProofUITests", "Proof.xcodeproj", "Packages", "Config"] {
             guard let enumerator = FileManager.default.enumerator(atPath: root + "/" + directory) else { continue }
             while let relative = enumerator.nextObject() as? String {
                 let name = (relative as NSString).lastPathComponent
