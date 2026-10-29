@@ -37,7 +37,7 @@ public final class SimlessRegistry {
 public enum SimlessHost {
     /// True when this process is a `simless` render host. Apps can use it to skip
     /// side effects (analytics, network sync) that a render host should not do.
-    static var isActive: Bool { ProcessInfo.processInfo.arguments.contains("--simless-port") }
+    public static var isActive: Bool { ProcessInfo.processInfo.arguments.contains("--simless-port") }
 
     private static var registry = SimlessRegistry()
     private static var patchGeneration = 0
@@ -58,10 +58,10 @@ public enum SimlessHost {
 
     /// Call once from `App.init()`. No-op unless launched by `simless`.
     #if SWIFT_PACKAGE
-    private static var configureFixtures: (SimlessRegistry) -> Void = { _ in }
+    private static var configureFixtures: @MainActor (SimlessRegistry) -> Void = { _ in }
 
     /// Package integration uses the same host without copying this source into the app.
-    public static func startIfRequested(configure: @escaping (SimlessRegistry) -> Void) {
+    public static func startIfRequested(configure: @escaping @MainActor (SimlessRegistry) -> Void) {
         configureFixtures = configure
         startIfRequested()
     }

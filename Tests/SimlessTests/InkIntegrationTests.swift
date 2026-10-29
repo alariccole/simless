@@ -40,6 +40,11 @@ final class InkIntegrationTests: XCTestCase {
               ws.config.kitPackage == true, ws.xcproject != nil, ws.config.buildJobs == 4 else {
             throw SimlessError("expected the committed JSON Proof app with package kit and four build jobs")
         }
+        for path in ws.config.sourceDirs + ws.packages + [ws.config.project, ws.config.fixturesFile] {
+            guard !path.hasPrefix("/"), URL(fileURLWithPath: root + "/" + path).resolvingSymlinksInPath().path.hasPrefix(root + "/") else {
+                throw SimlessError("configured source path escapes verified snapshot: \(path)")
+            }
+        }
 
         // Nested xcodebuild inherits the managed job but not its direct-tool
         // xcconfig setup. Preserve existing settings and confine its CAS here.
@@ -64,6 +69,8 @@ final class InkIntegrationTests: XCTestCase {
         ownedSlot = slot
         XCTAssertEqual(slot.namespace, shortHash(state))
         XCTAssertEqual(slot.sources, ws.currentSourcesID())
+        Slots.stop(slot)
+        try Slots.launch(slot, idleMinutes: ws.idleMinutes, locale: "en")
         let fixture = "Ink.TextInput"
         var evidence: [[String: Any]] = []
         for device in ["iphone-small", "iphone", "ipad"] {
@@ -75,8 +82,10 @@ final class InkIntegrationTests: XCTestCase {
         }
         // Recompile/re-register the unchanged fixture: this proves the package's
         // registry is shared with generated patches, without editing app source.
+        let beforePatch = try XCTUnwrap(slot.stats()?["patch"] as? Int)
         let dylib = try Patch.compile(ws: ws, slot: slot, settings: ws.settings(), files: [root + "/" + ws.config.fixturesFile])
         XCTAssertNil(try Patch.live(dylib: dylib, slot: slot))
+        XCTAssertGreaterThan(try XCTUnwrap(slot.stats()?["patch"] as? Int), beforePatch)
         evidence.append(try render(slot, fixture: fixture, device: "iphone", dark: false, output: results + "/reloaded-iphone"))
         XCTAssertEqual(slot.sources, ws.currentSourcesID())
         try verify(inputs, at: root)
