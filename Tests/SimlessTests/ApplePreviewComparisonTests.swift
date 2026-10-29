@@ -70,6 +70,7 @@ final class ApplePreviewComparisonTests: XCTestCase {
             }
             records.append(record)
             let report: [String: Any] = ["sourceBlob": blob, "inkRevision": revision, "records": records,
+                "measurement": "Mac-side tool request to usable screenshot, not app or Foundation Models performance",
                 "requestedDestination": "My Mac (Designed for iPad)", "configuredDerivedData": scratch + "/AppleDerivedData",
                 "cacheCaveat": "Xcode service owns additional preview and package caches; no cold-cache or app-performance claim."]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: results + "/apple-preview.json"))
@@ -78,9 +79,8 @@ final class ApplePreviewComparisonTests: XCTestCase {
                 XCTFail("RenderPreview did not produce a usable image: \(errors)"); return
             }
             let destination = try XCTUnwrap(response["renderedDestination"] as? [String: Any])
-            guard destination["platformName"] as? String == "macOS" else {
-                XCTFail("Apple selected a non-Mac destination; no simulator timing comparison"); return
-            }
+            // The owner's clarification: simulator app/model performance is excluded;
+            // Mac-side turnaround of the rendering tool is the requested measurement.
             arguments["preferredRenderDestination"] = ["identifier": try XCTUnwrap(destination["identifier"] as? String)]
         }
     }
