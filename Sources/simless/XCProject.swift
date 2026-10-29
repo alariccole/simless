@@ -56,13 +56,40 @@ struct XCProject {
             if type == "bundle.ui-testing" || type == "com.apple.product-type.bundle.ui-testing" { ui.insert(name) }
             func setting(_ object: [String: Any], _ key: String) throws -> String? {
                 guard let settings = object["build-settings"] as? [String: Any] else { return nil }
+                for conditional in settings.keys where conditional.hasPrefix(key + "[") {
+                    if let match = conditional.firstMatch(of: #/\[config=([^\]]+)\]/#) {
+                        let configuration = String(match.1)
+                        if configuration != "Debug", !configuration.contains("*"), !configuration.contains("?") { continue }
+                    }
+                    guard conditional == key + "[config=Debug]" else {
+                        throw SimlessError("cannot resolve conditional \(conditional) for \(name); use an explicit Debug \(key)")
+                    }
+                }
                 let value = settings[key + "[config=Debug]"] ?? settings[key]
                 guard let value else { return nil }
                 if let text = value as? String { return text }
                 if let array = value as? [String] { return array.joined(separator: " ") }
                 throw SimlessError("unsupported \(key) value for \(name)")
             }
-            let sdk = try setting(target, "SDKROOT") ?? setting(json, "SDKROOT") ?? "iphoneos"
+            func hasConfigurationFile(_ object: [String: Any]) -> Bool {
+                ["configurations", "specialized-configurations"].contains { key in
+                    (object[key] as? [Any] ?? []).contains { value in
+                        guard let config = value as? [String: Any], config["file"] != nil else { return false }
+                        return config["name"] as? String == "Debug" || config["name"] == nil
+                    }
+                }
+            }
+            var resolvedSDK = try setting(target, "SDKROOT")
+            if resolvedSDK == nil {
+                guard !hasConfigurationFile(target) else {
+                    throw SimlessError("SDKROOT for \(name) may come from a target xcconfig; specify it explicitly before discovering tests")
+                }
+                resolvedSDK = try setting(json, "SDKROOT")
+                if resolvedSDK == nil, hasConfigurationFile(json) {
+                    throw SimlessError("SDKROOT for \(name) may come from a project xcconfig; specify it explicitly before discovering tests")
+                }
+            }
+            let sdk = resolvedSDK ?? "iphoneos"
             switch sdk {
             case "watchos", "watchsimulator": platform[name] = "watchOS"
             case "appletvos", "appletvsimulator": platform[name] = "tvOS"

@@ -187,8 +187,10 @@ JSON UI test discovery supports synchronized folders, target inclusion/exclusion
 lists, and explicit `Target/compile-sources` file memberships. Unsupported path
 bases, complex memberships, and build-phase exceptions report errors rather than
 silently omitting tests. UI test targets expected by a run must contain discoverable
-tests. SDK platform discovery currently reads project/target `SDKROOT` settings
-(including `[config=Debug]`); it does not evaluate `.xcconfig` files.
+tests. Explicit `tests.uiSources` folders remain additive in either format.
+SDK platform discovery reads inline project/target `SDKROOT` settings (including
+`[config=Debug]`). If determining the platform needs an `.xcconfig` file or other
+conditional settings, discovery fails explicitly instead of possibly omitting tests.
 
 Set `SIMLESS_STATE_ROOT` to an absolute, job-owned directory to keep cache and
 support state together there. With this override, global crash-report and orphan
