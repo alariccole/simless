@@ -13,6 +13,12 @@ final class ApplePreviewComparisonTests: XCTestCase {
         let results = try XCTUnwrap(env["INKLINGS_JOB_RESULTS"])
         let source = try XCTUnwrap(env["SIMLESS_INK_SNAPSHOT"])
         let repository = try XCTUnwrap(env["SIMLESS_INK_REPOSITORY"])
+        _ = try XCTUnwrap(env["INKLINGS_JOB_ID"])
+        let canonical: (String) -> String = { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        guard canonical(source) == "/Users/alcol/Ink/.lanes/simless-xcproj-01a188d7/ink-acceptance-303ebda",
+              canonical(source) != canonical(repository), canonical(results).hasPrefix(canonical(scratch) + "/") else {
+            XCTFail("Comparison requires its owned disposable source and managed results"); return
+        }
         let revision = "303ebdaca3b128d4ae7a4db07c36fc341494235b"
         let relative = "Packages/Presentable/Sources/Presentable/Previews/TextInput+Preview.swift"
         let data = try Data(contentsOf: URL(fileURLWithPath: source + "/" + relative))
