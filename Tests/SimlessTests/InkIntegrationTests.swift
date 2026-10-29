@@ -28,6 +28,9 @@ final class InkIntegrationTests: XCTestCase {
     func testProofPreviewAndFixtureReload() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["SIMLESS_RUN_INK"] == "1" else { throw XCTSkip("Set SIMLESS_RUN_INK=1 for the explicit Ink acceptance run") }
+        let oldVerbose = Log.verbose
+        Log.verbose = true
+        defer { Log.verbose = oldVerbose }
         let job = try XCTUnwrap(env["INKLINGS_BUILD_SCRATCH_ROOT"])
         _ = try XCTUnwrap(env["INKLINGS_JOB_ID"])
         let source = try XCTUnwrap(env["SIMLESS_INK_SNAPSHOT"])
