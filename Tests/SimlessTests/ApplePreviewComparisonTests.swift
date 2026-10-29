@@ -49,8 +49,8 @@ final class ApplePreviewComparisonTests: XCTestCase {
         let workspace = try XCTUnwrap(opened["workspaceIdentifier"] as? String)
         defer { _ = try? bridge.call("XcodeCloseWorkspace", ["workspaceIdentifier": workspace]) }
         guard opened["activeScheme"] as? String == "Proof" else { XCTFail("Unexpected active scheme"); return }
-        let switched = try bridge.call("XcodeSwitchRunDestination", ["workspaceIdentifier": workspace, "displayTitle": "My Mac (Designed for iPad)"])
-        guard switched["activeDestinationDisplayTitle"] as? String == "My Mac (Designed for iPad)" else { XCTFail("Mac destination unavailable"); return }
+        let switched = try bridge.call("XcodeSwitchRunDestination", ["workspaceIdentifier": workspace, "displayTitle": "iPhone 18 Pro"])
+        guard switched["activeDestinationDisplayTitle"] as? String == "iPhone 18 Pro" else { XCTFail("Requested preview device unavailable"); return }
         // Opening a workspace returns before its package graph is ready. Build
         // once outside the warm-render timer, then discover the actual preview path.
         let preparationStart = DispatchTime.now().uptimeNanoseconds
@@ -84,7 +84,7 @@ final class ApplePreviewComparisonTests: XCTestCase {
             let report: [String: Any] = ["sourceBlob": blob, "inkRevision": revision, "records": records,
                 "preparationSeconds": preparationSeconds, "preparationBuild": preparation,
                 "measurement": "Mac-side tool request to usable screenshot, not app or Foundation Models performance",
-                "activeRunDestination": "My Mac (Designed for iPad)", "requestedRenderDestination": "iPhone 18 Pro",
+                "activeRunDestination": "iPhone 18 Pro", "requestedRenderDestination": "iPhone 18 Pro",
                 "configuredDerivedData": scratch + "/AppleDerivedData",
                 "cacheCaveat": "Xcode service owns additional preview and package caches; no cold-cache or app-performance claim."]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: results + "/apple-preview.json"))
