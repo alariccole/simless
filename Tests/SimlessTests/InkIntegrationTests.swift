@@ -10,6 +10,21 @@ import CryptoKit
 /// existing TextInput preview through production simless APIs, under managed XCTest.
 /// It accepts source paths/revisions, never an arbitrary command to execute.
 final class InkIntegrationTests: XCTestCase {
+    /// A read-only check against the actual project's complete JSON5 structure,
+    /// useful before its host hookup has reached the committed acceptance tree.
+    func testActualInkProjectMetadata() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["SIMLESS_RUN_INK_METADATA"] == "1" else { throw XCTSkip("opt-in real-project metadata check") }
+        let repository = try XCTUnwrap(env["SIMLESS_INK_REPOSITORY"])
+        let project = try XCTUnwrap(XCProject.loadIfPresent(repository + "/Proof.xcodeproj"))
+        XCTAssertEqual(project.targets, ["Proof", "ProofUITests", "ProofDepthTests"])
+        XCTAssertEqual(project.uiTargets, ["ProofUITests"])
+        XCTAssertEqual(project.folders["Proof"], [repository + "/Proof"])
+        XCTAssertTrue(project.packages.contains(repository + "/Packages/Presentable"))
+        XCTAssertFalse(project.uiSources["ProofUITests", default: []].isEmpty)
+        XCTAssertEqual(project.platforms["Proof"], "iOS")
+    }
+
     func testCommittedProofPreviewAndFixtureReload() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["SIMLESS_RUN_INK"] == "1" else { throw XCTSkip("Set SIMLESS_RUN_INK=1 for the explicit Ink acceptance run") }
