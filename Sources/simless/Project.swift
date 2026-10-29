@@ -14,6 +14,7 @@ struct Config: Codable {
     var sourceDirs: [String]      // scanned for edited files on `simless reload`
     var device: String = "iphone" // default canvas: iphone | ipad
     var buildConcurrency: Int?    // max simultaneous full builds across all agents
+    var buildJobs: Int?           // optional per-build compiler job limit
     var hostIdleMinutes: Int?     // hosts exit after this long without requests (default 30; SIMLESS_HOST_IDLE_MINUTES wins)
     var standbyIdleMinutes: Int?  // a standby test host exits after this long unused (default 10; SIMLESS_STANDBY_IDLE_MINUTES wins)
     var diskLimitGB: Double?      // everything simless keeps on this Mac (default 25; SIMLESS_DISK_LIMIT_GB wins)
@@ -314,7 +315,8 @@ struct Workspace {
                 try Cleanup.retryingPoisonedCache {
                     try Shell.run(["xcodebuild", action,
                                  "-project", project, "-scheme", config.scheme, "-configuration", "Debug",
-                                 "-destination", destination, "-derivedDataPath", derivedData] + Self.buildSettings,
+                                 "-destination", destination, "-derivedDataPath", derivedData]
+                                + (config.buildJobs.map { ["-jobs", String(max(1, $0))] } ?? []) + Self.buildSettings,
                                 cwd: root, logPath: buildLog)
                 }
             }

@@ -163,7 +163,7 @@ enum Patch {
                     // One frontend job per file: each loads the app's modules once, side by
                     // side (the driver runs one job without -j: 3.5 s against 2.1 s for two
                     // edited files in a 700-file app).
-                    "-j", "\(max(1, min(files.count + 1, ProcessInfo.processInfo.activeProcessorCount)))"]
+                    "-j", "\(max(1, min(files.count + 1, ProcessInfo.processInfo.activeProcessorCount, ws.config.buildJobs ?? Int.max)))"]
         if let iso = effective.isolation { args += ["-default-isolation", iso] }
         for f in effective.features { args += ["-enable-upcoming-feature", f] }
         for c in settings.conditions { args += ["-D", c] }
