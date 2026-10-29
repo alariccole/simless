@@ -136,10 +136,16 @@ func cmdInit(_ args: Args) throws {
     // An existing .simless.json is kept (re-running init updates SimlessKit);
     // --force writes a fresh one.
     let configPath = "\(root)/\(Workspace.configName)"
-    let existing = args.flags.contains("--force") ? nil : (try? Workspace.load(at: root))?.config
-    let config = existing ?? Config(project: project, scheme: scheme, appTarget: appTarget, testTarget: testTarget,
-                                    kitDir: kitDir, sourceDirs: [sourceDir], packages: packages.isEmpty ? nil : packages)
-    if existing == nil {
+    let previous = (try? Workspace.load(at: root))?.config
+    let existing = args.flags.contains("--force") ? nil : previous
+    var config = existing ?? Config(project: project, scheme: scheme, appTarget: appTarget, testTarget: testTarget,
+                                    kitDir: kitDir, sourceDirs: [sourceDir], packages: packages.isEmpty ? nil : packages,
+                                    kitPackage: previous?.kitPackage)
+    if args.flags.contains("--kit-package") { config.kitPackage = true }
+    if config.kitPackage == true, exists("\(root)/\(config.kitFile)") {
+        throw SimlessError("remove the copied \(config.kitFile) from the app target before enabling package kit mode")
+    }
+    if existing == nil || config.kitPackage != previous?.kitPackage {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(config).write(to: URL(fileURLWithPath: configPath))
@@ -259,9 +265,15 @@ func initTemplate(_ dir: String, _ args: Args) throws {
 
     let configPath = "\(root)/\(Workspace.configName)"
     let keep = exists(configPath) && !args.flags.contains("--force")
-    let config = try keep ? Workspace.load(at: root).config : Config(project: "\(name).xcodeproj", scheme: appTarget, appTarget: appTarget, testTarget: testTarget,
-                        kitDir: kitDir, sourceDirs: sourceDirs, packages: packages.isEmpty ? nil : packages)
-    if !keep {
+    let previous = (try? Workspace.load(at: root))?.config
+    var config = try keep ? Workspace.load(at: root).config : Config(project: "\(name).xcodeproj", scheme: appTarget, appTarget: appTarget, testTarget: testTarget,
+                        kitDir: kitDir, sourceDirs: sourceDirs, packages: packages.isEmpty ? nil : packages,
+                        kitPackage: previous?.kitPackage)
+    if args.flags.contains("--kit-package") { config.kitPackage = true }
+    if config.kitPackage == true, exists("\(root)/\(config.kitFile)") {
+        throw SimlessError("remove the copied \(config.kitFile) from the app target before enabling package kit mode")
+    }
+    if !keep || config.kitPackage != previous?.kitPackage {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(config).write(to: URL(fileURLWithPath: configPath))

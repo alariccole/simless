@@ -197,6 +197,14 @@ Defaults are unchanged when the variable is absent.
 
 ### Command reference
 
+To link the host instead of copying it into an app, add this repository's
+`SimlessKit` library product to the app target and run `simless init --kit-package`.
+Keep the generated fixture file in the app; its startup call is
+`SimlessHost.startIfRequested(configure: simlessFixtures)`. The saved
+`"kitPackage": true` setting is preserved by subsequent initialization, including
+`--force`. Remove an old copied kit from the app target before migrating; simless
+refuses to create duplicate host types. Package mode remains DEBUG-only.
+
 ```
 simless init [--no-hook]          set up a repo
       [--template <dir>]          an xcodegen app template instead: kit and config only, no project edits
