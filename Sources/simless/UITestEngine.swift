@@ -40,20 +40,24 @@ enum UITestEngine {
         let pbx = (try? String(contentsOfFile: "\(ws.root)/\(ws.config.project)/project.pbxproj", encoding: .utf8)) ?? ""
         let unbuilt = includingUnbuilt ? (ws.xcproject?.uiTargets ?? uiTestTargets(pbx: pbx)).subtracting(names) : []
         return (names.union(unbuilt)).sorted().compactMap { name in
+            let configured = ws.config.tests?.uiSources?[name].map { ["\(ws.root)/\($0)"] } ?? []
             if let project = ws.xcproject {
                 // JSON membership is authoritative, including exclusions and explicit files.
                 // Keep an empty target visible so requesting it cannot become a false pass.
-                return UITarget(name: name, sources: project.uiSources[name] ?? [], built: !unbuilt.contains(name))
+                let sources = Set((project.uiSources[name] ?? []) + configured.flatMap(swiftSources))
+                return UITarget(name: name, sources: sources.sorted(), built: !unbuilt.contains(name))
             }
             let dirs = PBX.synchronizedFolders(target: name, pbx: pbx).map { "\(ws.projectDir)/\($0)" }
-                + (ws.config.tests?.uiSources?[name].map { ["\(ws.root)/\($0)"] } ?? [])
+                + configured
             let folders = dirs.isEmpty ? ["\(ws.projectDir)/\(name)"].filter { exists($0) } : dirs
-            let sources = folders.flatMap { dir -> [String] in
-                guard let e = FileManager.default.enumerator(atPath: dir) else { return [] }
-                return e.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.map { "\(dir)/\($0)" }
-            }.sorted()
+            let sources = folders.flatMap(swiftSources).sorted()
             return sources.isEmpty ? nil : UITarget(name: name, sources: sources, built: !unbuilt.contains(name))
         }
+    }
+
+    private static func swiftSources(_ directory: String) -> [String] {
+        guard let files = FileManager.default.enumerator(atPath: directory) else { return [] }
+        return files.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.map { directory + "/" + $0 }
     }
 
     /// JSON discovery must not let an empty target hide behind a passing one.

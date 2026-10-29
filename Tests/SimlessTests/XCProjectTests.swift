@@ -134,6 +134,50 @@ final class XCProjectTests: XCTestCase {
         XCTAssertEqual(try ws.buildProject(), root + "/App.xcodeproj")
     }
 
+    func testTargetXcconfigCannotSilentlyExcludeAnIOSTest() throws {
+        let json: [String: Any] = [
+            "build-settings": ["SDKROOT": "watchos"],
+            "targets": [["name": "Tests", "product-type": "bundle.unit-test",
+                         "specialized-configurations": [["name": "Debug", "file": "Debug.xcconfig"]]]]
+        ]
+        XCTAssertThrowsError(try XCProject(json: json, directory: root))
+    }
+
+    func testLiteralTargetSDKDoesNotDependOnProjectXcconfig() throws {
+        let json: [String: Any] = [
+            "configurations": [["name": "Debug", "file": "Debug.xcconfig"]],
+            "targets": [["name": "Tests", "product-type": "bundle.unit-test", "build-settings": ["SDKROOT": "iphoneos"]]]
+        ]
+        XCTAssertEqual(try XCProject(json: json, directory: root).platforms["Tests"], "iOS")
+    }
+
+    func testConditionalSDKCannotSilentlyExcludeAnIOSTest() throws {
+        let json: [String: Any] = [
+            "build-settings": ["SDKROOT": "watchos"],
+            "targets": [["name": "Tests", "product-type": "bundle.unit-test",
+                         "build-settings": ["SDKROOT[config=Debug][arch=arm64]": "iphoneos"]]]
+        ]
+        XCTAssertThrowsError(try XCProject(json: json, directory: root))
+    }
+
+    func testReleaseSDKDoesNotChangeDebugClassification() throws {
+        let json: [String: Any] = ["targets": [["name": "Tests", "product-type": "bundle.unit-test",
+            "build-settings": ["SDKROOT": "iphoneos", "SDKROOT[config=Release]": "watchos"]]]]
+        XCTAssertEqual(try XCProject(json: json, directory: root).platforms["Tests"], "iOS")
+    }
+
+    func testConfiguredUISourcesArePreservedAlongsideJSONMembership() throws {
+        try prepare()
+        try write("ExtraUI/Extra.swift", "import XCTest\nfinal class Extra: XCTestCase {\n func testExtra() {}\n}")
+        let path = root + "/.simless.json"
+        var config = try JSONDecoder().decode(Config.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        config.tests = Config.Tests(uiSources: ["Journey": "ExtraUI"])
+        try JSONEncoder().encode(config).write(to: URL(fileURLWithPath: path))
+        let targets = UITestEngine.targets(try Workspace.load(at: root), includingUnbuilt: true)
+        let target = try XCTUnwrap(targets.first)
+        XCTAssertEqual(Set(UITestEngine.tests(in: target).map(\.method)), ["testWorks", "testExtra"])
+    }
+
     func testPackagesOutsideRepositoryRemainRelative() {
         XCTAssertEqual(Workspace.relativePackages(["/repo/shared/Widgets"], root: "/repo/app"), ["../shared/Widgets"])
     }
