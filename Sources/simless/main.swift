@@ -3,7 +3,9 @@
 
 import Foundation
 
-let version = "0.7.3"
+// Computed metadata is also valid when XCTest imports the executable module
+// without running main.swift's top-level initialization.
+var version: String { "0.7.3" }
 
 let usage = """
 simless: fast, headless, simulator-free SwiftUI checks for AI agents.
@@ -506,9 +508,11 @@ func cmdRender(_ args: Args) throws {
 }
 
 /// SimlessKit version this simless needs for every feature (see `kitVersion` in the kit).
-let requiredKit = 5
+var requiredKit: Int { 5 }
 /// The kit each feature first needs (older kits keep working without it).
-let localeKit = 3, settleKit = 4, actKit = 5
+var localeKit: Int { 3 }
+var settleKit: Int { 4 }
+var actKit: Int { 5 }
 
 func render(slot: SlotRecord, target: String, args: Args, ws: Workspace) throws {
     if let size = args.values["--text-size"], !Render.textSizes.contains(size) {
