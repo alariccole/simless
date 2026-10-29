@@ -53,7 +53,10 @@ final class ApplePreviewComparisonTests: XCTestCase {
         guard switched["activeDestinationDisplayTitle"] as? String == "My Mac (Designed for iPad)" else { XCTFail("Mac destination unavailable"); return }
         var records: [[String: Any]] = []
         var arguments: [String: Any] = ["workspaceIdentifier": workspace,
-            "sourceFilePath": "Presentable/Sources/Presentable/Previews/TextInput+Preview.swift", "timeout": 180]
+            "sourceFilePath": "Presentable/Sources/Presentable/Previews/TextInput+Preview.swift", "timeout": 180,
+            // Exact supported overrides returned by the initial real RenderPreview call.
+            "displayMode": "static", "preferredRenderDestination": ["identifier": "4099B785-D4F4-4584-8CCD-DA13FED692DF"],
+            "previewVariantOverrides": ["Color Scheme": "Light Appearance", "Dynamic Type": "Large", "Orientation": "Portrait"]]
         for index in 0..<4 {
             let start = DispatchTime.now().uptimeNanoseconds
             let response: [String: Any]

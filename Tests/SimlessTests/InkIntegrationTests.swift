@@ -156,7 +156,8 @@ final class InkIntegrationTests: XCTestCase {
         let canvas = try Render.canvas(device)
         let start = now()
         let result = try Render.run(slot: slot, fixture: fixture,
-                                    options: Render.Options(dark: dark, device: device, pngPath: output + ".png", json: true, idiom: idiom))
+                                    options: Render.Options(dark: dark, device: device, pngPath: output + ".png", json: true,
+                                                            textSize: idiom == "phone" ? "l" : nil, idiom: idiom))
         try result.text.write(toFile: output + ".json", atomically: true, encoding: .utf8)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
         XCTAssertEqual(json["fixture"] as? String, fixture)
