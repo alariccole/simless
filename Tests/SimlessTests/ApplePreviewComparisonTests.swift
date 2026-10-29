@@ -54,7 +54,13 @@ final class ApplePreviewComparisonTests: XCTestCase {
         // Opening a workspace returns before its package graph is ready. Build
         // once outside the warm-render timer, then discover the actual preview path.
         let preparationStart = DispatchTime.now().uptimeNanoseconds
-        let preparation = try bridge.call("BuildProject", ["workspaceIdentifier": workspace], timeout: 300)
+        let preparation: [String: Any]
+        do { preparation = try bridge.call("BuildProject", ["workspaceIdentifier": workspace], timeout: 300) }
+        catch { preparation = ["errors": [["message": String(describing: error)]]] }
+        let initialReport: [String: Any] = ["sourceBlob": blob, "inkRevision": revision, "preparationBuild": preparation,
+            "preparationSeconds": Double(DispatchTime.now().uptimeNanoseconds - preparationStart) / 1_000_000_000,
+            "cancellationCaveat": "Client timeout does not cancel Xcode's build; inspect actual build activity before releasing its slot."]
+        try JSONSerialization.data(withJSONObject: initialReport, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: results + "/apple-preview.json"))
         guard (preparation["errors"] as? [[String: Any]] ?? []).isEmpty else { XCTFail("Apple preparation build failed: \(preparation)"); return }
         let discovery = try bridge.call("XcodeGlob", ["workspaceIdentifier": workspace, "pattern": "**/TextInput+Preview.swift"])
         let matches = try XCTUnwrap(discovery["matches"] as? [String])
@@ -93,6 +99,10 @@ final class ApplePreviewComparisonTests: XCTestCase {
                 XCTFail("RenderPreview did not produce a usable image: \(errors)"); return
             }
             let destination = try XCTUnwrap(response["renderedDestination"] as? [String: Any])
+            guard destination["identifier"] as? String == "4099B785-D4F4-4584-8CCD-DA13FED692DF",
+                  destination["deviceModelName"] as? String == "iPhone 18 Pro" else {
+                XCTFail("Unexpected rendering destination; samples are not matched"); return
+            }
             // The owner's clarification: simulator app/model performance is excluded;
             // Mac-side turnaround of the rendering tool is the requested measurement.
             arguments["preferredRenderDestination"] = ["identifier": try XCTUnwrap(destination["identifier"] as? String)]
