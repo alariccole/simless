@@ -294,6 +294,20 @@ struct SlotRecord: Codable {
 struct GlobalState: Codable {
     var slots: [SlotRecord] = []
 
+    /// A copied state file must not grant this job control of another root's
+    /// globally named hosts/preferences. Check before any automatic cleanup.
+    static func validateManagedState() throws {
+        guard let root = Paths.stateRoot, exists(Paths.statePath) else { return }
+        let state = try JSONDecoder().decode(GlobalState.self, from: Data(contentsOf: URL(fileURLWithPath: Paths.statePath)))
+        try state.validateNamespace(shortHash(root))
+    }
+
+    func validateNamespace(_ expected: String) throws {
+        guard slots.allSatisfy({ $0.namespace == expected }) else {
+            throw SimlessError("SIMLESS_STATE_ROOT contains state from another root; use a fresh job-owned directory")
+        }
+    }
+
     static func load() -> GlobalState {
         guard let d = FileManager.default.contents(atPath: Paths.statePath),
               let s = try? JSONDecoder().decode(GlobalState.self, from: d) else { return GlobalState() }
@@ -312,6 +326,7 @@ struct GlobalState: Codable {
     static func slot(bundleBase: String, worktree: String, kind: String? = nil) throws -> SlotRecord {
         try withLock("state") {
             var s = load()
+            if let root = Paths.stateRoot { try s.validateNamespace(shortHash(root)) }
             if let r = s.slots.first(where: { $0.bundleBase == bundleBase && $0.worktree == worktree && $0.kind == kind }) { return r }
             let usedN = Set(s.slots.filter { $0.bundleBase == bundleBase && $0.kind == kind }.map(\.n))
             let usedPorts = Set(s.slots.map(\.port))

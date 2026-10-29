@@ -123,6 +123,15 @@ final class SlotPrepTests: XCTestCase {
         XCTAssertEqual(first.slotID, "com.example.App.simlessmanaged-first-1-ui1")
     }
 
+    func testCopiedStateCannotControlAnotherRootsHosts() {
+        var record = SlotRecord(bundleBase: "com.example.App", n: 1, worktree: "/project", port: 47800)
+        XCTAssertThrowsError(try GlobalState(slots: [record]).validateNamespace("expected"))
+        record.namespace = "other"
+        XCTAssertThrowsError(try GlobalState(slots: [record]).validateNamespace("expected"))
+        record.namespace = "expected"
+        XCTAssertNoThrow(try GlobalState(slots: [record]).validateNamespace("expected"))
+    }
+
     private func iOSDylib(named name: String, at path: String, source: String, extra: [String] = []) throws -> String {
         let src = "\(dir!)/\(name).swift"
         try source.write(toFile: src, atomically: true, encoding: .utf8)

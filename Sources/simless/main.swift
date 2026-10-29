@@ -878,6 +878,7 @@ if args.flags.contains("--help") || args.flags.contains("-h") {
 }
 
 do {
+    try GlobalState.validateManagedState()
     if !["help", "-h", "--help", "init", "skill", "version", "--version"].contains(command) { Cleanup.collectGarbage() }
     switch command {
     case "init": try cmdInit(args)
