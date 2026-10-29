@@ -175,6 +175,28 @@ Live reload works out of the box: simless puts each patch in the host's own temp
 
 ## Commands
 
+### JSON Xcode projects
+
+Projects using Apple's `project.xcproj` JSON5 file work in the default **native**
+mode; `project.pbxproj` projects remain supported. `simless init` reads local
+packages and synchronized source folders from either format. Native builds use
+the original project without conversion. The older `dfi` mode's project rewrite
+does not support JSON projects and reports an error instead.
+
+JSON UI test discovery supports synchronized folders, target inclusion/exclusion
+lists, and explicit `Target/compile-sources` file memberships. Unsupported path
+bases, complex memberships, and build-phase exceptions report errors rather than
+silently omitting tests. UI test targets expected by a run must contain discoverable
+tests. SDK platform discovery currently reads project/target `SDKROOT` settings
+(including `[config=Debug]`); it does not evaluate `.xcconfig` files.
+
+Set `SIMLESS_STATE_ROOT` to an absolute, job-owned directory to keep cache and
+support state together there. With this override, global crash-report and orphan
+preference cleanup is disabled. Use a distinct app bundle ID for concurrent jobs
+that use separate state roots. Defaults are unchanged when the variable is absent.
+
+### Command reference
+
 ```
 simless init [--no-hook]          set up a repo
       [--template <dir>]          an xcodegen app template instead: kit and config only, no project edits
