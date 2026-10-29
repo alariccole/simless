@@ -126,6 +126,12 @@ final class InkIntegrationTests: XCTestCase {
                                            output: results + "/" + name))
             }
         }
+        if env["SIMLESS_COMPARE_WARM"] == "1" {
+            for index in 1...3 {
+                evidence.append(try render(slot, fixture: fixture, device: "iphone", dark: false,
+                                           output: results + "/warm-iphone-\(index)", idiom: "phone"))
+            }
+        }
         // Recompile/re-register the unchanged fixture: this proves the package's
         // registry is shared with generated patches, without editing app source.
         let beforePatch = try XCTUnwrap(slot.stats()?["patch"] as? Int)
@@ -146,12 +152,11 @@ final class InkIntegrationTests: XCTestCase {
             .write(to: URL(fileURLWithPath: results + "/ink-proof.json"))
     }
 
-    private func render(_ slot: SlotRecord, fixture: String, device: String, dark: Bool, output: String) throws -> [String: Any] {
+    private func render(_ slot: SlotRecord, fixture: String, device: String, dark: Bool, output: String, idiom: String? = nil) throws -> [String: Any] {
         let canvas = try Render.canvas(device)
         let start = now()
         let result = try Render.run(slot: slot, fixture: fixture,
-                                    options: Render.Options(dark: dark, device: device, pngPath: output + ".png", json: true))
-        let seconds = now() - start
+                                    options: Render.Options(dark: dark, device: device, pngPath: output + ".png", json: true, idiom: idiom))
         try result.text.write(toFile: output + ".json", atomically: true, encoding: .utf8)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
         XCTAssertEqual(json["fixture"] as? String, fixture)
@@ -164,7 +169,8 @@ final class InkIntegrationTests: XCTestCase {
         XCTAssertEqual(image.pixelsWide, Int(canvas.width * 2))
         XCTAssertEqual(image.pixelsHigh, Int(canvas.height * 2))
         return ["device": device, "dark": dark, "png": (output as NSString).lastPathComponent + ".png",
-                "nodes": nodes.count, "reportedIssues": result.issues, "wallSeconds": seconds]
+                "nodes": nodes.count, "reportedIssues": result.issues, "wallSeconds": now() - start,
+                "requestedIdiom": idiom ?? "default", "measurement": "request to validated image and accessibility report"]
     }
 
     private func verifyResolver(root: String, repository: String, revision: String, requireKit: Bool) throws -> [[String: Any]] {
