@@ -25,7 +25,7 @@ final class InkIntegrationTests: XCTestCase {
         XCTAssertEqual(project.platforms["Proof"], "iOS")
     }
 
-    func testCommittedProofPreviewAndFixtureReload() throws {
+    func testProofPreviewAndFixtureReload() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["SIMLESS_RUN_INK"] == "1" else { throw XCTSkip("Set SIMLESS_RUN_INK=1 for the explicit Ink acceptance run") }
         let job = try XCTUnwrap(env["INKLINGS_BUILD_SCRATCH_ROOT"])
@@ -45,7 +45,22 @@ final class InkIntegrationTests: XCTestCase {
         guard URL(fileURLWithPath: results).resolvingSymlinksInPath().path.hasPrefix(jobRoot + "/") else {
             throw SimlessError("results must belong to the managed job")
         }
-        let inputs = try committedInputs(repository: repository, revision: revision)
+        var inputs = try committedInputs(repository: repository, revision: revision)
+        var overlay: [String: String] = [:]
+        if let manifest = env["SIMLESS_REVIEWED_OVERLAY"] {
+            guard env["SIMLESS_ALLOW_REVIEWED_OVERLAY"] == "1" else { throw SimlessError("reviewed overlay needs explicit opt-in") }
+            let data = try Data(contentsOf: URL(fileURLWithPath: manifest))
+            let receipt = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            guard receipt["baseCommit"] as? String == revision else { throw SimlessError("overlay base commit differs") }
+            overlay = try XCTUnwrap(receipt["blobs"] as? [String: String])
+            guard Set(overlay.keys) == [".simless.json", "Proof/ProofApp.swift", "Proof/Simless/SimlessFixtures.swift", "Proof.xcodeproj/project.xcproj"],
+                  overlay.values.allSatisfy({ $0.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil }) else {
+                throw SimlessError("overlay must contain exactly the four reviewed hookup files")
+            }
+            inputs.removeAll { overlay[$0.0] != nil }
+            inputs += overlay.map { ($0.key, $0.value, "100644") }
+        }
+        guard inputs.contains(where: { $0.0 == ".simless.json" }) else { throw SimlessError("no verified simless configuration") }
         try verify(inputs, at: root)
         let previousDirectory = FileManager.default.currentDirectoryPath
         guard FileManager.default.changeCurrentDirectoryPath(root) else { throw SimlessError("cannot enter Proof snapshot") }
@@ -110,7 +125,7 @@ final class InkIntegrationTests: XCTestCase {
         evidence.append(try render(slot, fixture: fixture, device: "iphone", dark: false, output: results + "/reloaded-iphone"))
         XCTAssertEqual(slot.sources, ws.currentSourcesID())
         try verify(inputs, at: root)
-        let receipt: [String: Any] = ["inkCommit": revision, "fixture": fixture, "renders": evidence,
+        let receipt: [String: Any] = ["baseInkCommit": revision, "overlayBlobs": overlay, "fixture": fixture, "renders": evidence,
                                        "sourceID": ws.currentSourcesID(), "slotID": slot.slotID,
                                        "venue": "mac-native-host", "modelBehaviorTested": false]
         try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
@@ -146,9 +161,8 @@ final class InkIntegrationTests: XCTestCase {
             guard fields.count == 3, fields[1] == "blob" else { throw SimlessError("unverified submodule in Proof input") }
             return (String(pair[1]), String(fields[2]), String(fields[0]))
         }
-        guard entries.contains(where: { $0.0 == ".simless.json" }),
-              entries.contains(where: { $0.0 == "Proof.xcodeproj/project.xcproj" }) else {
-            throw SimlessError("commit does not contain the JSON Proof integration")
+        guard entries.contains(where: { $0.0 == "Proof.xcodeproj/project.xcproj" }) else {
+            throw SimlessError("commit does not contain the JSON Proof project")
         }
         return entries
     }
