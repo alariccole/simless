@@ -109,6 +109,20 @@ final class SlotPrepTests: XCTestCase {
         return bin
     }
 
+    func testManagedRootsCannotShareHostIdentity() throws {
+        let original = SlotRecord(bundleBase: "com.example.App", n: 1, worktree: "/project", port: 47800)
+        var first = original, second = original
+        first.namespace = "first"
+        second.namespace = "second"
+        XCTAssertEqual(original.slotID, "com.example.App.simless1")
+        XCTAssertNotEqual(first.slotID, original.slotID)
+        XCTAssertNotEqual(first.slotID, second.slotID)
+        XCTAssertEqual(try JSONDecoder().decode(SlotRecord.self, from: JSONEncoder().encode(first)).slotID, first.slotID)
+        XCTAssertEqual(try JSONDecoder().decode(SlotRecord.self, from: JSONEncoder().encode(original)).slotID, original.slotID)
+        first.kind = "ui1"
+        XCTAssertEqual(first.slotID, "com.example.App.simlessmanaged-first-1-ui1")
+    }
+
     private func iOSDylib(named name: String, at path: String, source: String, extra: [String] = []) throws -> String {
         let src = "\(dir!)/\(name).swift"
         try source.write(toFile: src, atomically: true, encoding: .utf8)
