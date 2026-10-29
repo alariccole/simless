@@ -51,9 +51,18 @@ final class ApplePreviewComparisonTests: XCTestCase {
         guard opened["activeScheme"] as? String == "Proof" else { XCTFail("Unexpected active scheme"); return }
         let switched = try bridge.call("XcodeSwitchRunDestination", ["workspaceIdentifier": workspace, "displayTitle": "My Mac (Designed for iPad)"])
         guard switched["activeDestinationDisplayTitle"] as? String == "My Mac (Designed for iPad)" else { XCTFail("Mac destination unavailable"); return }
+        // Opening a workspace returns before its package graph is ready. Build
+        // once outside the warm-render timer, then discover the actual preview path.
+        let preparationStart = DispatchTime.now().uptimeNanoseconds
+        let preparation = try bridge.call("BuildProject", ["workspaceIdentifier": workspace], timeout: 300)
+        guard (preparation["errors"] as? [[String: Any]] ?? []).isEmpty else { XCTFail("Apple preparation build failed: \(preparation)"); return }
+        let discovery = try bridge.call("XcodeGlob", ["workspaceIdentifier": workspace, "pattern": "**/TextInput+Preview.swift"])
+        let matches = try XCTUnwrap(discovery["matches"] as? [String])
+        guard matches.count == 1 else { XCTFail("Preview not uniquely discovered: \(discovery)"); return }
+        let preparationSeconds = Double(DispatchTime.now().uptimeNanoseconds - preparationStart) / 1_000_000_000
         var records: [[String: Any]] = []
         var arguments: [String: Any] = ["workspaceIdentifier": workspace,
-            "sourceFilePath": "Presentable/Sources/Presentable/Previews/TextInput+Preview.swift", "timeout": 180,
+            "sourceFilePath": matches[0], "timeout": 180,
             // Exact supported overrides returned by the initial real RenderPreview call.
             "displayMode": "static", "preferredRenderDestination": ["identifier": "4099B785-D4F4-4584-8CCD-DA13FED692DF"],
             "previewVariantOverrides": ["Color Scheme": "Light Appearance", "Dynamic Type": "Large", "Orientation": "Portrait"]]
@@ -73,6 +82,7 @@ final class ApplePreviewComparisonTests: XCTestCase {
             }
             records.append(record)
             let report: [String: Any] = ["sourceBlob": blob, "inkRevision": revision, "records": records,
+                "preparationSeconds": preparationSeconds, "preparationBuild": preparation,
                 "measurement": "Mac-side tool request to usable screenshot, not app or Foundation Models performance",
                 "activeRunDestination": "My Mac (Designed for iPad)", "requestedRenderDestination": "iPhone 18 Pro",
                 "configuredDerivedData": scratch + "/AppleDerivedData",

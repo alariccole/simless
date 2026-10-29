@@ -90,6 +90,11 @@ final class XCProjectTests: XCTestCase {
     }
 
     func testDFIModeGivesExplicitError() throws {
+        let previous = ProcessInfo.processInfo.environment["SIMLESS_MODE"]
+        setenv("SIMLESS_MODE", "dfi", 1)
+        defer {
+            if let previous { setenv("SIMLESS_MODE", previous, 1) } else { unsetenv("SIMLESS_MODE") }
+        }
         try prepare()
         try config(mode: "dfi")
         XCTAssertThrowsError(try Workspace.load(at: root).buildProject()) { error in
