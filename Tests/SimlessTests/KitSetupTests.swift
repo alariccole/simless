@@ -16,7 +16,7 @@ final class KitSetupTests: XCTestCase {
     override func tearDown() { try? FileManager.default.removeItem(atPath: root) }
 
     func testMetadataIsInitializedWhenCallingAPIsFromTests() {
-        XCTAssertEqual(version, "0.7.3")
+        XCTAssertEqual(simless.version, "0.7.3")
         XCTAssertEqual(requiredKit, 5)
         XCTAssertEqual(localeKit, 3)
         XCTAssertEqual(settleKit, 4)
