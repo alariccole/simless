@@ -192,8 +192,8 @@ tests. SDK platform discovery currently reads project/target `SDKROOT` settings
 
 Set `SIMLESS_STATE_ROOT` to an absolute, job-owned directory to keep cache and
 support state together there. With this override, global crash-report and orphan
-preference cleanup is disabled. Use a distinct app bundle ID for concurrent jobs
-that use separate state roots. Defaults are unchanged when the variable is absent.
+preference cleanup is disabled, and host bundle IDs are namespaced to that root.
+Defaults are unchanged when the variable is absent.
 
 ### Command reference
 

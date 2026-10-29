@@ -64,6 +64,8 @@ enum Cleanup {
     /// Crash reports macOS wrote for simless hosts (a slot's, or every slot's),
     /// older than `age` seconds.
     static func removeCrashReports(slotID: String? = nil, olderThan age: TimeInterval) {
+        // Reports live outside the selected state root, shared by every job.
+        guard Paths.stateRoot == nil else { return }
         let dir = "\(Paths.home)/Library/Logs/DiagnosticReports"
         for file in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where file.hasSuffix(".ips") {
             let path = "\(dir)/\(file)"
@@ -141,7 +143,7 @@ enum Cleanup {
             }
             // Crash reports of simless hosts, after a day.
             removeCrashReports(olderThan: 86_400)
-            Native.removeOrphanPreferences(known: Set(state.slots.map(\.slotID)))
+            if Paths.stateRoot == nil { Native.removeOrphanPreferences(known: Set(state.slots.map(\.slotID))) }
             // Build caches of worktrees that no longer exist.
             let work = "\(Paths.cache)/work"
             for dir in (try? FileManager.default.contentsOfDirectory(atPath: work)) ?? [] {

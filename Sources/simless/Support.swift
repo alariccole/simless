@@ -24,9 +24,14 @@ func secs(_ since: Double) -> String { String(format: "%.1fs", now() - since) }
 
 enum Paths {
     static let home = FileManager.default.homeDirectoryForCurrentUser.path
+    /// CI/managed jobs can own their state without sharing or pruning another
+    /// invocation's cache. This does not change the user's home directory.
+    static let stateRoot = ProcessInfo.processInfo.environment["SIMLESS_STATE_ROOT"].map {
+        URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath().path
+    }
     /// Everything simless builds or caches. The agent only accepts patches from here.
-    static let cache = "\(home)/Library/Caches/simless"
-    static let support = "\(home)/Library/Application Support/Simless"
+    static let cache = stateRoot.map { "\($0)/cache" } ?? "\(home)/Library/Caches/simless"
+    static let support = stateRoot.map { "\($0)/support" } ?? "\(home)/Library/Application Support/Simless"
     static let slots = "\(cache)/slots"
     static let locks = "\(cache)/locks"
     static let statePath = "\(cache)/state.json"
@@ -278,7 +283,11 @@ struct SlotRecord: Codable {
     var covered: [String]?      // fixtures the newest patch renders with the edits
     var stale: [String]?        // fixtures that reach an edit the newest patch doesn't cover
     var kind: String?           // nil: the render host. "test": unit tests. "ui1"...: UI test app hosts
-    var slotID: String { "\(bundleBase).simless\(n)\(kind.map { "-" + $0 } ?? "")" }
+    var namespace: String?      // persisted so separate state roots cannot stop/wipe each other's hosts
+    var slotID: String {
+        let suffix = namespace.map { "managed-\($0)-\(n)" } ?? String(n)
+        return "\(bundleBase).simless\(suffix)\(kind.map { "-" + $0 } ?? "")"
+    }
     var dir: String { "\(Paths.slots)/\(slotID)" }
 }
 
@@ -312,6 +321,7 @@ struct GlobalState: Codable {
             let port = (47800...65000).first { !usedPorts.contains($0) && portIsFree($0) } ?? (47800...).first { !usedPorts.contains($0) }!
             var r = SlotRecord(bundleBase: bundleBase, n: n, worktree: worktree, port: port)
             r.kind = kind
+            r.namespace = Paths.stateRoot.map(shortHash)
             s.slots.append(r)
             try s.save()
             return r
