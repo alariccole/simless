@@ -108,7 +108,9 @@ final class InkIntegrationTests: XCTestCase {
                 XCTAssertTrue(Native.pids(slot).isEmpty, "the integration host must stop")
             }
         }
+        let setupStart = now()
         try cmdUp(Args(["--no-tests"]))
+        let setupSeconds = now() - setupStart
         let slot = try currentSlot(ws)
         ownedSlot = slot
         XCTAssertEqual(slot.namespace, shortHash(state))
@@ -127,8 +129,10 @@ final class InkIntegrationTests: XCTestCase {
         // Recompile/re-register the unchanged fixture: this proves the package's
         // registry is shared with generated patches, without editing app source.
         let beforePatch = try XCTUnwrap(slot.stats()?["patch"] as? Int)
+        let reloadStart = now()
         let dylib = try Patch.compile(ws: ws, slot: slot, settings: ws.settings(), files: [root + "/" + ws.config.fixturesFile])
         XCTAssertNil(try Patch.live(dylib: dylib, slot: slot))
+        let reloadSeconds = now() - reloadStart
         XCTAssertGreaterThan(try XCTUnwrap(slot.stats()?["patch"] as? Int), beforePatch)
         evidence.append(try render(slot, fixture: fixture, device: "iphone", dark: false, output: results + "/reloaded-iphone"))
         XCTAssertEqual(slot.sources, ws.currentSourcesID())
@@ -136,6 +140,7 @@ final class InkIntegrationTests: XCTestCase {
         let resolvedPins = try verifyResolver(root: root, repository: repository, revision: revision, requireKit: true)
         let receipt: [String: Any] = ["baseInkCommit": revision, "overlayBlobs": overlay, "fixture": fixture, "renders": evidence,
                                        "sourceID": ws.currentSourcesID(), "slotID": slot.slotID,
+                                       "setupSeconds": setupSeconds, "unchangedFixtureReloadSeconds": reloadSeconds,
                                        "resolvedPins": resolvedPins, "venue": "mac-native-host", "modelBehaviorTested": false]
         try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
             .write(to: URL(fileURLWithPath: results + "/ink-proof.json"))
@@ -143,8 +148,10 @@ final class InkIntegrationTests: XCTestCase {
 
     private func render(_ slot: SlotRecord, fixture: String, device: String, dark: Bool, output: String) throws -> [String: Any] {
         let canvas = try Render.canvas(device)
+        let start = now()
         let result = try Render.run(slot: slot, fixture: fixture,
                                     options: Render.Options(dark: dark, device: device, pngPath: output + ".png", json: true))
+        let seconds = now() - start
         try result.text.write(toFile: output + ".json", atomically: true, encoding: .utf8)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
         XCTAssertEqual(json["fixture"] as? String, fixture)
@@ -157,7 +164,7 @@ final class InkIntegrationTests: XCTestCase {
         XCTAssertEqual(image.pixelsWide, Int(canvas.width * 2))
         XCTAssertEqual(image.pixelsHigh, Int(canvas.height * 2))
         return ["device": device, "dark": dark, "png": (output as NSString).lastPathComponent + ".png",
-                "nodes": nodes.count, "reportedIssues": result.issues]
+                "nodes": nodes.count, "reportedIssues": result.issues, "wallSeconds": seconds]
     }
 
     private func verifyResolver(root: String, repository: String, revision: String, requireKit: Bool) throws -> [[String: Any]] {
