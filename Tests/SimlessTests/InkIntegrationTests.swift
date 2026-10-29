@@ -61,6 +61,11 @@ final class InkIntegrationTests: XCTestCase {
             inputs += overlay.map { ($0.key, $0.value, "100644") }
         }
         guard inputs.contains(where: { $0.0 == ".simless.json" }) else { throw SimlessError("no verified simless configuration") }
+        // Xcode regenerates this derived lock after adding the pinned host.
+        // Validate every dependency revision instead of demanding the old lock blob.
+        let resolverPath = "Proof.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+        inputs.removeAll { $0.0 == resolverPath }
+        _ = try verifyResolver(root: root, repository: repository, revision: revision, requireKit: false)
         try verify(inputs, at: root)
         let previousDirectory = FileManager.default.currentDirectoryPath
         guard FileManager.default.changeCurrentDirectoryPath(root) else { throw SimlessError("cannot enter Proof snapshot") }
@@ -125,9 +130,10 @@ final class InkIntegrationTests: XCTestCase {
         evidence.append(try render(slot, fixture: fixture, device: "iphone", dark: false, output: results + "/reloaded-iphone"))
         XCTAssertEqual(slot.sources, ws.currentSourcesID())
         try verify(inputs, at: root)
+        let resolvedPins = try verifyResolver(root: root, repository: repository, revision: revision, requireKit: true)
         let receipt: [String: Any] = ["baseInkCommit": revision, "overlayBlobs": overlay, "fixture": fixture, "renders": evidence,
                                        "sourceID": ws.currentSourcesID(), "slotID": slot.slotID,
-                                       "venue": "mac-native-host", "modelBehaviorTested": false]
+                                       "resolvedPins": resolvedPins, "venue": "mac-native-host", "modelBehaviorTested": false]
         try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
             .write(to: URL(fileURLWithPath: results + "/ink-proof.json"))
     }
@@ -149,6 +155,29 @@ final class InkIntegrationTests: XCTestCase {
         XCTAssertEqual(image.pixelsHigh, Int(canvas.height * 2))
         return ["device": device, "dark": dark, "png": (output as NSString).lastPathComponent + ".png",
                 "nodes": nodes.count, "reportedIssues": result.issues]
+    }
+
+    private func verifyResolver(root: String, repository: String, revision: String, requireKit: Bool) throws -> [[String: Any]] {
+        let path = "Proof.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+        let original = try Shell.check(["git", "-C", repository, "show", revision + ":" + path])
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(original.utf8)) as? [String: Any])
+        let current = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: root + "/" + path))) as? [String: Any])
+        let basePins = try XCTUnwrap(base["pins"] as? [[String: Any]])
+        let pins = try XCTUnwrap(current["pins"] as? [[String: Any]])
+        let baseIDs = Set(basePins.compactMap { $0["identity"] as? String })
+        for pin in basePins {
+            guard let match = pins.first(where: { $0["identity"] as? String == pin["identity"] as? String }),
+                  NSDictionary(dictionary: match).isEqual(to: pin) else { throw SimlessError("resolver changed an existing dependency") }
+        }
+        let added = pins.filter { !baseIDs.contains($0["identity"] as? String ?? "") }
+        guard added.count <= 1, pins.count == basePins.count + added.count else { throw SimlessError("unexpected resolver additions") }
+        if let kit = added.first {
+            guard kit["identity"] as? String == "simless", kit["location"] as? String == "https://github.com/alariccole/simless.git",
+                  (kit["state"] as? [String: String])?["revision"] == "4bd33b4d99a54790c3217b986dc8cc9262d25e99" else {
+                throw SimlessError("resolver did not use the reviewed fork revision")
+            }
+        } else if requireKit { throw SimlessError("resolver has no SimlessKit dependency") }
+        return pins
     }
 
     private func committedInputs(repository: String, revision: String) throws -> [(String, String, String)] {
