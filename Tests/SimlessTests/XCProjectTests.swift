@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Abacus.AI, Inc.
+
+import XCTest
+@testable import simless
+
+final class XCProjectTests: XCTestCase {
+    var root: String!
+    override func setUpWithError() throws {
+        root = NSTemporaryDirectory() + "simless-xcproj-" + UUID().uuidString
+        try mkdirp(root + "/App.xcodeproj/xcshareddata/xcschemes")
+    }
+    override func tearDown() { try? FileManager.default.removeItem(atPath: root) }
+
+    func write(_ path: String, _ text: String) throws {
+        try mkdirp((root + "/" + path as NSString).deletingLastPathComponent)
+        try text.write(toFile: root + "/" + path, atomically: true, encoding: .utf8)
+    }
+    func config(mode: String = "native") throws {
+        let value = Config(project: "App.xcodeproj", scheme: "App", appTarget: "App", testTarget: "AppTests",
+                           kitDir: "App/Simless", sourceDirs: ["App"], mode: mode)
+        try JSONEncoder().encode(value).write(to: URL(fileURLWithPath: root + "/.simless.json"))
+    }
+    let project = #"""
+    {
+      // Xcode writes JSON5 comments and trailing commas.
+      "targets": [
+        {"name": "App", "product-type": "application"},
+        {"name": "AppTests", "product-type": "bundle.unit-test"},
+        {"name": "Journey", "product-type": "bundle.ui-testing"},
+        {"name": "WatchTests", "product-type": "bundle.unit-test", "build-settings": {"SDKROOT": ["watchos"]}},
+      ],
+      "packages": [{"kind": "local", "path": "Packages/Widgets"}, {"kind": "remote", "repository": "https://example.invalid/widgets"}],
+      "files": [
+        {"kind": "folder", "path": "App", "target-membership": ["App"]},
+        {"kind": "group", "name": "Display name", "path": "Tests", "children": [
+          {"kind": "folder", "path": "UI", "target-membership": ["Journey"], "membership-exceptions": [{"target": "Journey", "exclusions": ["Excluded.swift"]}]},
+          {"kind": "group", "name": "Virtual", "children": [
+            {"path": "<PROJECT>/Shared/Extra.swift", "target-membership": ["Journey/compile-sources"]},
+          ]},
+        ]},
+        {"kind": "group", "name": "Products", "children": [{"path": "<PRODUCTS>/App.app"}]},
+      ],
+    }
+    """#
+
+    func prepare() throws {
+        try write("App.xcodeproj/project.xcproj", project)
+        try write("Tests/UI/Included.swift", "import XCTest\nfinal class Journey: XCTestCase {\n func testWorks() {}\n}")
+        try write("Tests/UI/Excluded.swift", "import XCTest\nfinal class Excluded: XCTestCase {\n func testMustNotRun() {}\n}")
+        try write("Shared/Extra.swift", "")
+        try write("Packages/Widgets/Package.swift", "")
+        try config()
+    }
+
+    func testJSON5DiscoveryKeepsMembershipAndPackagePaths() throws {
+        try prepare()
+        let ws = try Workspace.load(at: root)
+        XCTAssertEqual(ws.packages, ["Packages/Widgets"])
+        XCTAssertEqual(ws.xcproject?.folders["Journey"], [root + "/Tests/UI"])
+        let targets = UITestEngine.targets(ws, includingUnbuilt: true)
+        XCTAssertEqual(targets.map(\.name), ["Journey"])
+        XCTAssertEqual(targets.first?.sources, [root + "/Shared/Extra.swift", root + "/Tests/UI/Included.swift"])
+        XCTAssertEqual(UITestEngine.tests(in: targets[0]).map(\.method), ["testWorks"])
+        XCTAssertEqual(SimulatorLane.platform("WatchTests", ws: ws), "watchOS")
+        XCTAssertEqual(try ws.buildProject(), root + "/App.xcodeproj")
+    }
+
+    func testExpectedUnitTargetsExcludeUIAndOtherPlatforms() throws {
+        try prepare()
+        try write("App.xcodeproj/xcshareddata/xcschemes/App.xcscheme", """
+        <Scheme><TestAction><TestableReference BlueprintName = "AppTests" />
+        <TestableReference BlueprintName = "Journey" /><TestableReference BlueprintName = "WatchTests" />
+        <TestableReference BlueprintName = "DeletedTests" /></TestAction></Scheme>
+        """)
+        let ws = try Workspace.load(at: root)
+        XCTAssertEqual(TestEngine.expectedTargets(ws, packageTargets: ["WidgetsTests"]), ["AppTests", "WidgetsTests"])
+    }
+
+    func testMalformedJSONDoesNotBecomeEmptyDiscovery() throws {
+        try config()
+        try write("App.xcodeproj/project.xcproj", "{broken")
+        XCTAssertThrowsError(try Workspace.load(at: root))
+    }
+
+    func testUnsupportedUITestExceptionsFailClosed() throws {
+        try prepare()
+        try write("App.xcodeproj/project.xcproj", project.replacingOccurrences(of: #""exclusions": ["Excluded.swift"]"#, with: #""platforms": {"Included.swift": ["ios"]}"#))
+        XCTAssertThrowsError(try Workspace.load(at: root))
+    }
+
+    func testDFIModeGivesExplicitError() throws {
+        try prepare()
+        try config(mode: "dfi")
+        XCTAssertThrowsError(try Workspace.load(at: root).buildProject()) { error in
+            XCTAssertTrue(String(describing: error).contains("requires native mode"))
+        }
+    }
+
+    func testLegacyProjectStillLoadsWithoutJSON() throws {
+        try config()
+        try write("App.xcodeproj/project.pbxproj", "{}")
+        let ws = try Workspace.load(at: root)
+        XCTAssertNil(ws.xcproject)
+        XCTAssertEqual(try ws.buildProject(), root + "/App.xcodeproj")
+    }
+
+    func testPackagesOutsideRepositoryRemainRelative() {
+        XCTAssertEqual(Workspace.relativePackages(["/repo/shared/Widgets"], root: "/repo/app"), ["../shared/Widgets"])
+    }
+}

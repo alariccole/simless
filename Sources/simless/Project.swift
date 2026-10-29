@@ -67,6 +67,9 @@ struct Config: Codable {
 struct Workspace {
     let root: String
     let config: Config
+    // Loaded once per invocation, with parse errors propagated rather than empty
+    // discovery results that could make `test all` silently omit targets.
+    var xcproject: XCProject? = nil
 
     static let configName = ".simless.json"
     /// Settings every build of the app and its packages' tests shares, so
@@ -120,12 +123,26 @@ struct Workspace {
 
     static func load(at root: String) throws -> Workspace {
         let data = try Data(contentsOf: URL(fileURLWithPath: "\(root)/\(configName)"))
-        return Workspace(root: root, config: try JSONDecoder().decode(Config.self, from: data))
+        let config = try JSONDecoder().decode(Config.self, from: data)
+        return Workspace(root: root, config: config,
+                         xcproject: try XCProject.loadIfPresent("\(root)/\(config.project)"))
     }
 
     /// Local packages (relative to root): from the config, else the ones the
     /// project references now (a package added after `simless init` counts).
-    var packages: [String] { config.packages ?? Self.localPackages(root: root, project: config.project) }
+    var packages: [String] {
+        config.packages ?? xcproject.map { Self.relativePackages($0.packages, root: root) }
+            ?? Self.localPackages(root: root, project: config.project)
+    }
+
+    static func relativePackages(_ paths: [String], root: String) -> [String] {
+        let base = URL(fileURLWithPath: root).standardizedFileURL.path.split(separator: "/")
+        return paths.map { path in
+            let parts = URL(fileURLWithPath: path).standardizedFileURL.path.split(separator: "/")
+            let common = zip(base, parts).prefix { $0 == $1 }.count
+            return (Array(repeating: "..", count: base.count - common) + parts.dropFirst(common).map(String.init)).joined(separator: "/")
+        }
+    }
 
     static func localPackages(root: String, project: String) -> [String] {
         let projectDir = (project as NSString).deletingLastPathComponent
@@ -207,6 +224,9 @@ struct Workspace {
     func buildProject() throws -> String {
         let original = "\(root)/\(config.project)"
         if native { return original }
+        guard !exists("\(original)/project.xcproj") else {
+            throw SimlessError("project.xcproj requires native mode; set mode to native in .simless.json. The dfi project rewrite supports project.pbxproj only")
+        }
         let name = projectBase
         let variant = "\(projectDir)/\(name).simless.xcodeproj"
         let pbx = try String(contentsOfFile: "\(original)/project.pbxproj", encoding: .utf8)
