@@ -140,7 +140,8 @@ struct Workspace {
         return paths.map { path in
             let parts = URL(fileURLWithPath: path).standardizedFileURL.path.split(separator: "/")
             let common = zip(base, parts).prefix { $0 == $1 }.count
-            return (Array(repeating: "..", count: base.count - common) + parts.dropFirst(common).map(String.init)).joined(separator: "/")
+            let relative = (Array(repeating: "..", count: base.count - common) + parts.dropFirst(common).map(String.init)).joined(separator: "/")
+            return relative.isEmpty ? "." : relative
         }
     }
 

@@ -90,6 +90,11 @@ final class XCProjectTests: XCTestCase {
     }
 
     func testDFIModeGivesExplicitError() throws {
+        let previous = ProcessInfo.processInfo.environment["SIMLESS_MODE"]
+        setenv("SIMLESS_MODE", "dfi", 1)
+        defer {
+            if let previous { setenv("SIMLESS_MODE", previous, 1) } else { unsetenv("SIMLESS_MODE") }
+        }
         try prepare()
         try config(mode: "dfi")
         XCTAssertThrowsError(try Workspace.load(at: root).buildProject()) { error in
@@ -180,5 +185,12 @@ final class XCProjectTests: XCTestCase {
 
     func testPackagesOutsideRepositoryRemainRelative() {
         XCTAssertEqual(Workspace.relativePackages(["/repo/shared/Widgets"], root: "/repo/app"), ["../shared/Widgets"])
+    }
+
+    func testSynchronizedProjectRootRemainsDot() throws {
+        let json: [String: Any] = ["targets": [["name": "App", "product-type": "application"]],
+            "files": [["kind": "folder", "path": ".", "target-membership": ["App"]]]]
+        let project = try XCProject(json: json, directory: root)
+        XCTAssertEqual(Workspace.relativePackages(project.folders["App"] ?? [], root: root), ["."])
     }
 }

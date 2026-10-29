@@ -192,11 +192,6 @@ SDK platform discovery reads inline project/target `SDKROOT` settings (including
 `[config=Debug]`). If determining the platform needs an `.xcconfig` file or other
 conditional settings, discovery fails explicitly instead of possibly omitting tests.
 
-Set `SIMLESS_STATE_ROOT` to an absolute, job-owned directory to keep cache and
-support state together there. With this override, global crash-report and orphan
-preference cleanup is disabled. Use a distinct app bundle ID for concurrent jobs
-that use separate state roots. Defaults are unchanged when the variable is absent.
-
 ### Command reference
 
 ```
