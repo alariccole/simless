@@ -56,7 +56,17 @@ enum UITestEngine {
         }
     }
 
-    /// Every UI test target in the project, built or not.
+    /// JSON discovery must not let an empty target hide behind a passing one.
+    static func validateDiscovery(_ targets: [UITarget], inScheme: Set<String>, filters: [String]) throws {
+        for target in targets where target.built || inScheme.contains(target.name) {
+            let wanted = filters.isEmpty || filters.contains { $0 == target.name || $0.hasPrefix(target.name + "/") }
+            if wanted && tests(in: target).isEmpty {
+                throw SimlessError("no UI tests discovered for expected target \(target.name); cannot verify its coverage")
+            }
+        }
+    }
+
+    /// Every UI test target in the legacy project, built or not.
     static func uiTestTargets(pbx: String) -> Set<String> {
         var out = Set<String>()
         for block in pbx.components(separatedBy: "isa = PBXNativeTarget;").dropFirst() {
@@ -250,6 +260,7 @@ enum UITestEngine {
         var named: [String] = []                    // ...and asked for by name
         var missing: [String] = []                  // in the scheme, yet not in the build: never fine
         let inScheme = Set(SimulatorLane.schemes(ws).filter { $0.value == ws.config.scheme }.keys)
+        if ws.xcproject != nil { try validateDiscovery(every, inScheme: inScheme, filters: filters) }
         for target in every where !target.built {
             let wanted = filters.isEmpty || filters.contains { $0 == target.name || $0.hasPrefix(target.name + "/") }
             if !wanted { continue }

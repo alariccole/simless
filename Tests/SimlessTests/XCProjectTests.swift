@@ -97,6 +97,35 @@ final class XCProjectTests: XCTestCase {
         }
     }
 
+    func testBuildPhaseExceptionCannotHideAnAdditionalUITarget() throws {
+        try prepare()
+        let changed = project.replacingOccurrences(of: #""target-membership": ["Journey"], "membership-exceptions": [{"target": "Journey", "exclusions": ["Excluded.swift"]}]"#,
+                                                  with: #""target-membership": ["App"], "membership-exceptions": [{"build-phase": "Journey/compile-sources", "inclusions": ["Included.swift"]}]"#)
+        XCTAssertNotEqual(changed, project)
+        try write("App.xcodeproj/project.xcproj", changed)
+        XCTAssertThrowsError(try Workspace.load(at: root))
+    }
+
+    func testEmptyExpectedUITargetCannotHideBehindAnotherTarget() throws {
+        try prepare()
+        let populated = UITestEngine.UITarget(name: "Journey", sources: [root + "/Tests/UI/Included.swift"])
+        let empty = UITestEngine.UITarget(name: "OtherJourney", sources: [])
+        XCTAssertThrowsError(try UITestEngine.validateDiscovery([populated, empty], inScheme: [], filters: []))
+        XCTAssertNoThrow(try UITestEngine.validateDiscovery([populated, empty], inScheme: [], filters: ["Journey"]))
+    }
+
+    func testMalformedMembershipFailsInsteadOfOmittingSources() throws {
+        try prepare()
+        try write("App.xcodeproj/project.xcproj", project.replacingOccurrences(of: #"["Journey/compile-sources"]"#, with: #"{"invalid": true}"#))
+        XCTAssertThrowsError(try Workspace.load(at: root))
+    }
+
+    func testMissingExplicitUITestSourceFails() throws {
+        try prepare()
+        try write("App.xcodeproj/project.xcproj", project.replacingOccurrences(of: "Shared/Extra.swift", with: "Shared/Missing.swift"))
+        XCTAssertThrowsError(try Workspace.load(at: root))
+    }
+
     func testLegacyProjectStillLoadsWithoutJSON() throws {
         try config()
         try write("App.xcodeproj/project.pbxproj", "{}")
