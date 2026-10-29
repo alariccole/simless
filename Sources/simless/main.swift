@@ -84,7 +84,8 @@ func cmdInit(_ args: Args) throws {
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? cwd
     let fm = FileManager.default
     let project = try args.values["--project"] ?? findProject(in: root)
-    guard exists("\(root)/\(project)/project.pbxproj") else { throw SimlessError("\(project) is not an Xcode project") }
+    let xcproject = try XCProject.loadIfPresent("\(root)/\(project)")
+    guard xcproject != nil || exists("\(root)/\(project)/project.pbxproj") else { throw SimlessError("\(project) is not an Xcode project") }
     let projectDir = (project as NSString).deletingLastPathComponent        // "" or e.g. "ios"
     let base = ((project as NSString).lastPathComponent as NSString).deletingPathExtension
     func inProjectDir(_ p: String) -> String { projectDir.isEmpty ? p : "\(projectDir)/\(p)" }
@@ -116,7 +117,8 @@ func cmdInit(_ args: Args) throws {
     // the target's (checked for the folder it goes into, since a classic group
     // can hold synchronized subfolders), or else added to the target by hand.
     let pbx = (try? String(contentsOfFile: "\(root)/\(project)/project.pbxproj", encoding: .utf8)) ?? ""
-    let synchronized = PBX.synchronizedFolders(target: appTarget, pbx: pbx).map(inProjectDir)
+    let synchronized = xcproject.map { Workspace.relativePackages($0.folders[appTarget] ?? [], root: root) }
+        ?? PBX.synchronizedFolders(target: appTarget, pbx: pbx).map(inProjectDir)
     func isSynchronized(_ dir: String) -> Bool { synchronized.contains { dir == $0 || dir.hasPrefix($0 + "/") || $0 == "." } }
     var kitDir = args.values["--kit-dir"] ?? (sourceDir == "." ? "Simless" : "\(sourceDir)/Simless")
     if args.values["--kit-dir"] == nil, !isSynchronized(kitDir) {
@@ -128,7 +130,8 @@ func cmdInit(_ args: Args) throws {
     }
 
     // Local Swift packages the project references: their views can be hot-reloaded too.
-    let packages = Workspace.localPackages(root: root, project: project)
+    let packages = xcproject.map { Workspace.relativePackages($0.packages, root: root) }
+        ?? Workspace.localPackages(root: root, project: project)
 
     // An existing .simless.json is kept (re-running init updates SimlessKit);
     // --force writes a fresh one.
